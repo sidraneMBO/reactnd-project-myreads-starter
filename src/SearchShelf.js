@@ -6,12 +6,12 @@ class SearchShelf extends React.Component {
 
   componentDidMount() {
     if (this.props.searchField !== "") {
-      this.props.getSearchedBooks(this.props.searchField);
+      this.props.searchBooks(this.props.searchField);
     }
   }
 
   handleChange = (event) => {
-    this.props.getSearchedBooks(event.target.value);
+    this.props.searchBooks(event.target.value);
   }
 
   render() {

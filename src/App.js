@@ -2,7 +2,6 @@ import React from 'react'
 import * as BooksAPI from './BooksAPI'
 import './App.css'
 import { Route } from 'react-router-dom'
-import BookShelf from './BookShelf'
 import BookShelfContainer from './BookShelfContainer'
 import SearchShelf from './SearchShelf'
 
@@ -11,7 +10,6 @@ class BooksApp extends React.Component {
     currentlyReadingBooks: [],
     wantToReadBooks: [],
     readBooks: [],
-    notInShelfBooks: [],
     searchedBooks: [],
     searchField: "",
     bookshelves: [
@@ -28,94 +26,75 @@ class BooksApp extends React.Component {
         value: "read"
       }
     ]
-  }
+  };
 
   getAllBooks() {
     return BooksAPI.getAll();
   }
 
-  searchBook(searchTerm) {
+  getSearchedBooks(searchTerm) {
     return BooksAPI.search(searchTerm);
   }
 
-  updateBooksState(books) {
-    let currentlyReadingBooks = [];
-    let wantToReadBooks = [];
-    let readBooks = [];
-    let notInShelfBooks = [];
+  getSearchedBooksWithShelfValue(searchTerm, allBooksInShelf) {
+    return this.getSearchedBooks(searchTerm)
+    .then((searchResult) => {
+      let searchedBooks = [];
 
-    books.map((book) => {
+      if (Array.isArray(searchResult)) {
+        const lookupBooksInShelf = [];
+        allBooksInShelf.forEach((book) => {
+          lookupBooksInShelf[book.id] = book;
+        });
+
+        searchedBooks = searchResult.map((searchedBook) => {
+          const lookupResult = lookupBooksInShelf[searchedBook.id];
+          if (lookupResult != null) {
+            searchedBook.shelf = lookupResult.shelf;
+          }
+
+          return searchedBook;
+        });
+      }
+
+      return searchedBooks;
+    });
+  }
+
+  updateShelfBooksState(books) {
+    const currentlyReadingBooks = [];
+    const wantToReadBooks = [];
+    const readBooks = [];
+
+    books.forEach((book) => {
       if (book.shelf === "currentlyReading") {
         currentlyReadingBooks.push(book);
       } else if (book.shelf === "wantToRead") {
         wantToReadBooks.push(book);
       } else if (book.shelf === "read") {
         readBooks.push(book);
-      } else {
-        notInShelfBooks.push(book);
       }
     });
 
     this.setState({
       currentlyReadingBooks: currentlyReadingBooks,
       wantToReadBooks: wantToReadBooks,
-      readBooks: readBooks,
-      notInShelfBooks: notInShelfBooks
+      readBooks: readBooks
     });
   }
 
-  updateSearchedBooksState(searchResult, allBooksInShelf) {
-    let searchedBooks = [];
-
-    // Update the shelf information.
-    if(Array.isArray(searchResult)) {
-      let lookupBooksInShelf = [];
-      allBooksInShelf.forEach((book) => {
-        lookupBooksInShelf[book.id] = book;
-      });
-
-      searchedBooks = searchResult.map((searchedBook) => {
-        let lookupResult = lookupBooksInShelf[searchedBook.id];
-        if (lookupResult != null) {
-          searchedBook.shelf = lookupResult.shelf;
-        }
-
-        return searchedBook;
-      });
-    }
-
-    this.setState({
-      searchedBooks: searchedBooks
-    });
-  }
-
-  componentDidMount() {
-    this.getAllBooks().then((books) => {
-      this.updateBooksState(books);
-    })
-  }
-
-  moveBookToShelf = (bookToMove, shelfToMoveTo) => {
-    // We can add a catch to reset the state, if this call had failed.
-    BooksAPI.update(bookToMove, shelfToMoveTo);
-
+  updateShelfBooksStateAfterMove(bookToMove, shelfToMoveTo) {
     this.setState((prevState) => {
-      let currentlyReadingBooks = [];
-      let wantToReadBooks = [];
-      let readBooks = [];
-
-      bookToMove.shelf = shelfToMoveTo;
-
-      currentlyReadingBooks = prevState.currentlyReadingBooks.filter(book => book.id !== bookToMove.id);
-      wantToReadBooks = prevState.wantToReadBooks.filter(book => book.id !== bookToMove.id);
-      readBooks = prevState.readBooks.filter(book => book.id !== bookToMove.id);
+      const currentlyReadingBooks = prevState.currentlyReadingBooks.filter(book => book.id !== bookToMove.id);
+      const wantToReadBooks = prevState.wantToReadBooks.filter(book => book.id !== bookToMove.id);
+      const readBooks = prevState.readBooks.filter(book => book.id !== bookToMove.id);
 
       if (shelfToMoveTo === "currentlyReading") {
-        currentlyReadingBooks = prevState.currentlyReadingBooks.concat(bookToMove);
+        currentlyReadingBooks.push(bookToMove);
       } else if (shelfToMoveTo === "wantToRead") {
-        wantToReadBooks = prevState.wantToReadBooks.concat(bookToMove);
+        wantToReadBooks.push(bookToMove);
       } else if (shelfToMoveTo === "read") {
-        readBooks = prevState.readBooks.concat(bookToMove);
+        readBooks.push(bookToMove);
       }
 
       return {
@@ -126,15 +105,39 @@ class BooksApp extends React.Component {
     });
   }
 
-  getSearchedBooks = (searchTerm) => {
+  updateSearchedBooksState(searchedBooks) {
+    this.setState({
+      searchedBooks
+    });
+  }
+
+  updateSearchFieldState(searchTerm) {
     this.setState({
       searchField: searchTerm
     });
+  }
 
-    this.searchBook(searchTerm).then((searchResult) => {
-      let allBooksInShelf = this.state.currentlyReadingBooks.concat(this.state.wantToReadBooks).concat(this.state.readBooks);
+  moveBookToShelf = (bookToMove, shelfToMoveTo) => {
+    // TODO: Add a catch to reset the state, if update call fails.
+    BooksAPI.update(bookToMove, shelfToMoveTo);
+    bookToMove.shelf = shelfToMoveTo;
+    this.updateShelfBooksStateAfterMove(bookToMove, shelfToMoveTo);
+  };
 
-      this.updateSearchedBooksState(searchResult, allBooksInShelf);
+  searchBooks = (searchTerm) => {
+    this.updateSearchFieldState(searchTerm);
+    let allBooksInShelf = this.state.currentlyReadingBooks.concat(this.state.wantToReadBooks).concat(this.state.readBooks);
+
+    this.getSearchedBooksWithShelfValue(searchTerm, allBooksInShelf)
+    .then((searchResult) => {
+      this.updateSearchedBooksState(searchResult);
+    });
+  };
+
+  componentDidMount() {
+    this.getAllBooks()
+    .then((books) => {
+      this.updateShelfBooksState(books);
     });
   }
 
@@ -154,7 +157,7 @@ class BooksApp extends React.Component {
         <Route path="/search" render={() => (
           <SearchShelf
           searchedBooks={this.state.searchedBooks}
-          getSearchedBooks={this.getSearchedBooks}
+          searchBooks={this.searchBooks}
           searchField={this.state.searchField}
           moveBookToShelf={this.moveBookToShelf}
           bookshelves={this.state.bookshelves}
